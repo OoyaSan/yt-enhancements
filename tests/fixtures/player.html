@@ -34,11 +34,15 @@
        <button class="icon-button player-settings-icon" aria-label="Playback Settings"><span>Settings</span></button>`
     : `<button class="ytp-subtitles-button ytp-button" aria-pressed="false"><span class="ytp-subtitles-button-icon">CC</span></button>
        <button class="ytp-settings-button ytp-button"><span>Settings</span></button>
+       <button class="ytp-button ytp-autonav-toggle"><div class="ytp-autonav-toggle-button-container"><div class="ytp-autonav-toggle-button"></div></div></button>
        <div class="ytp-settings-menu" hidden>
          <button class="ytp-menuitem" data-captions="off">Captions: Off</button>
          <button class="ytp-menuitem" data-captions="en">Captions: English</button>
        </div>`;
   const ccButton = controls.querySelector('.ytp-subtitles-button, .ytmClosedCaptioningButtonButton');
+  // Desktop's Autoplay toggle is always there (though YouTube may hide it); mobile's is only added once
+  // the player controls are first shown (fake.showControls()), as on m.youtube.com.
+  let autoplayToggle = controls.querySelector('.ytp-autonav-toggle');
 
   const fake = window.fake = {
     videoId: 'video-1',
@@ -46,10 +50,32 @@
     qualityLevels: ['hd1080', 'hd720', 'large', 'medium', 'small', 'tiny', 'auto'], // highest first
     quality: 'auto',
     hidden: false,
+    autoplayOn: true, // YouTube's default
+    autoplayReady: true, // false: the toggle ignores clicks, as YouTube's does right after page load
+    autoplayApplyDelay: 0, // ms before a click on the toggle takes effect
+    autoplayScriptClicks: 0, // clicks on the toggle made by scripts rather than the user
     calls: [], // player API calls made by the userscripts
     setCaptions(on) {
       this.captionsOn = on;
       ccButton.setAttribute('aria-pressed', String(on));
+    },
+    setAutoplay(on) {
+      this.autoplayOn = on;
+      if (!autoplayToggle) return;
+      autoplayToggle.setAttribute('aria-label', `Autoplay is ${on ? 'on' : 'off'}`);
+      if (mobile) autoplayToggle.setAttribute('aria-pressed', String(on));
+      else autoplayToggle.querySelector('.ytp-autonav-toggle-button').setAttribute('aria-checked', String(on));
+    },
+    hideAutoplayToggle() { autoplayToggle.style.display = 'none'; }, // as in YouTube's current desktop layout
+    showControls() {
+      if (!mobile || autoplayToggle) return;
+      const host = document.createElement('player-autonav-toggle');
+      host.className = 'ytwPlayerAutonavToggleHost';
+      host.innerHTML = '<button class="ytwAutonavToggleButtonHost"><span>Autoplay</span></button>';
+      controls.prepend(host);
+      autoplayToggle = host.querySelector('button');
+      autoplayToggle.addEventListener('click', onAutoplayToggleClick);
+      this.setAutoplay(this.autoplayOn);
     },
     setAd(on) { player.classList.toggle('ad-showing', on); },
     loadVideo(id, { captionsOn = false, qualityLevels } = {}) {
@@ -85,6 +111,14 @@
     if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
     fake.setCaptions(!fake.captionsOn);
   });
+  function onAutoplayToggleClick(e) {
+    if (!e.isTrusted) fake.autoplayScriptClicks++;
+    if (!fake.autoplayReady) return;
+    const flip = () => fake.setAutoplay(!fake.autoplayOn);
+    if (fake.autoplayApplyDelay) setTimeout(flip, fake.autoplayApplyDelay); else flip();
+  }
+  fake.setAutoplay(fake.autoplayOn);
+  if (autoplayToggle) autoplayToggle.addEventListener('click', onAutoplayToggleClick);
   const menu = controls.querySelector('.ytp-settings-menu');
   if (menu) {
     controls.querySelector('.ytp-settings-button').addEventListener('click', () => { menu.hidden = !menu.hidden; });
