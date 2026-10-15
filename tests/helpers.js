@@ -26,6 +26,12 @@ const inPage = (page, fn) => page.evaluate(fn);
 
 /** Snapshot of the fake player's state. */
 const playerState = (page) =>
-  page.evaluate(() => ({ captionsOn: fake.captionsOn, quality: fake.quality, calls: fake.calls }));
+  page.evaluate(() => ({
+    captionsOn: fake.captionsOn,
+    quality: fake.quality,
+    autoplayOn: fake.autoplayOn,
+    autoplayScriptClicks: fake.autoplayScriptClicks,
+    calls: fake.calls,
+  }));
 
 module.exports = { openPlayer, runUserscript, inPage, playerState };
