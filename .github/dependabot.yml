@@ -1,14 +1,23 @@
-# Weekly version updates for the npm dev dependencies (Playwright) and the GitHub Actions used
-# by the workflows. Security updates aren't affected by the cooldown and still arrive right away.
+# Version updates for the npm dev dependencies (Playwright) and the GitHub Actions used by the
+# workflows: major versions only, except Playwright (see below). Security updates aren't limited
+# by these rules or the cooldown, so they still arrive right away, at any version level.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     # Only propose releases that have been out for a week, so brand-new ones get time to settle.
     cooldown:
       default-days: 7
+    allow:
+      # Playwright stays on 1.x and ships new browser versions in minor releases, so take its
+      # minor updates too (at most one pull request a month).
+      - dependency-name: "@playwright/test"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Everything else: major versions only.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -16,6 +25,9 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    allow:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     # One pull request for all action updates instead of one per action.
     groups:
       github-actions:
