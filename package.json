@@ -1,0 +1,12 @@
+{
+  "name": "yt-enhancements",
+  "private": true,
+  "description": "Userscripts that improve YouTube.",
+  "scripts": {
+    "test": "playwright test --project=fixtures",
+    "test:live": "playwright test --project=live"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

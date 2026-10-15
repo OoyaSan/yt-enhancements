@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fake YouTube player</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #search { display: block; margin: 8px; }
+  #movie_player { position: relative; width: 100%; max-width: 640px; aspect-ratio: 16 / 9; background: #000; }
+  .video { position: absolute; inset: 0 0 48px 0; }
+  .controls { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; display: flex; gap: 8px; align-items: center; padding: 0 8px; background: #222; }
+  .controls button { min-width: 48px; height: 32px; }
+  .ytp-settings-menu { position: absolute; right: 8px; bottom: 56px; display: flex; flex-direction: column; background: #333; }
+  .ytp-settings-menu[hidden] { display: none; }
+</style>
+</head>
+<body>
+<input id="search" placeholder="Search">
+<div id="movie_player" class="html5-video-player">
+  <div class="video"></div>
+  <div class="controls"></div>
+</div>
+<script>
+  // A stand-in for YouTube's player: the #movie_player element with the API methods and controls the
+  // userscripts use. Desktop/embed controls by default; m.youtube.com controls with ?ui=mobile.
+  // Tests drive it through window.fake and inspect fake.calls.
+  const player = document.getElementById('movie_player');
+  const controls = player.querySelector('.controls');
+  const mobile = new URLSearchParams(location.search).get('ui') === 'mobile';
+
+  controls.innerHTML = mobile
+    ? `<button class="ytmClosedCaptioningButtonButton" aria-pressed="false"><span>CC</span></button>
+       <button class="icon-button player-settings-icon" aria-label="Playback Settings"><span>Settings</span></button>`
+    : `<button class="ytp-subtitles-button ytp-button" aria-pressed="false"><span class="ytp-subtitles-button-icon">CC</span></button>
+       <button class="ytp-settings-button ytp-button"><span>Settings</span></button>
+       <div class="ytp-settings-menu" hidden>
+         <button class="ytp-menuitem" data-captions="off">Captions: Off</button>
+         <button class="ytp-menuitem" data-captions="en">Captions: English</button>
+       </div>`;
+  const ccButton = controls.querySelector('.ytp-subtitles-button, .ytmClosedCaptioningButtonButton');
+
+  const fake = window.fake = {
+    videoId: 'video-1',
+    captionsOn: false,
+    qualityLevels: ['hd1080', 'hd720', 'large', 'medium', 'small', 'tiny', 'auto'], // highest first
+    quality: 'auto',
+    hidden: false,
+    calls: [], // player API calls made by the userscripts
+    setCaptions(on) {
+      this.captionsOn = on;
+      ccButton.setAttribute('aria-pressed', String(on));
+    },
+    setAd(on) { player.classList.toggle('ad-showing', on); },
+    loadVideo(id, { captionsOn = false, qualityLevels } = {}) {
+      this.videoId = id;
+      this.quality = 'auto';
+      if (qualityLevels) this.qualityLevels = qualityLevels;
+      this.setCaptions(captionsOn);
+    },
+    removeApi(...names) { for (const name of names) delete player[name]; },
+  };
+
+  // Lets tests simulate a background tab.
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => fake.hidden });
+
+  const record = (fn, args) => fake.calls.push({ fn, args: JSON.parse(JSON.stringify(args)) });
+  Object.assign(player, {
+    getVideoData: () => ({ video_id: fake.videoId }),
+    isSubtitlesOn: () => fake.captionsOn,
+    setOption(module, option, value) {
+      record('setOption', [module, option, value]);
+      if (module === 'captions' && option === 'track') fake.setCaptions(!!(value && value.languageCode));
+    },
+    getAvailableQualityLevels: () => fake.qualityLevels.slice(),
+    setPlaybackQualityRange(min, max) { record('setPlaybackQualityRange', [min, max]); fake.quality = max; },
+    setPlaybackQuality(q) { record('setPlaybackQuality', [q]); fake.quality = q; },
+  });
+
+  // YouTube's own controls: the CC button and "c" shortcut toggle captions; settings has a captions menu.
+  ccButton.addEventListener('click', () => fake.setCaptions(!fake.captionsOn));
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (e.key !== 'c' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    fake.setCaptions(!fake.captionsOn);
+  });
+  const menu = controls.querySelector('.ytp-settings-menu');
+  if (menu) {
+    controls.querySelector('.ytp-settings-button').addEventListener('click', () => { menu.hidden = !menu.hidden; });
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-captions]');
+      if (item) { fake.setCaptions(item.dataset.captions !== 'off'); menu.hidden = true; }
+    });
+  }
+</script>
+</body>
+</html>
