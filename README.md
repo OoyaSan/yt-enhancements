@@ -73,7 +73,9 @@ npm test
 clock makes the polling, retries and the 8-second captions window run instantly, and
 clicks, taps and key presses are real browser input, so the "user changed it themselves"
 cases are tested for real. It covers desktop and m.youtube.com (emulated phone) and needs
-no network.
+no network. GitHub Actions runs it on every push to `main` and on every pull request
+([.github/workflows/test.yml](.github/workflows/test.yml)); you can also start a run by hand
+from the Actions tab.
 
 `npm run test:live` runs a few checks against the real YouTube (www, m. and a
 youtube-nocookie embed). They confirm the player still has the methods and controls the
