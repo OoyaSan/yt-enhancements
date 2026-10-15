@@ -13,6 +13,9 @@
   .controls button { min-width: 48px; height: 32px; }
   .ytp-settings-menu { position: absolute; right: 8px; bottom: 56px; display: flex; flex-direction: column; background: #333; }
   .ytp-settings-menu[hidden] { display: none; }
+  ytd-live-chat-frame { display: block; width: 320px; }
+  ytd-live-chat-frame[collapsed] { display: none; }
+  #chatframe { width: 100%; height: 200px; border: 0; }
 </style>
 </head>
 <body>
@@ -21,6 +24,8 @@
   <div class="video"></div>
   <div class="controls"></div>
 </div>
+<button id="open-chat" hidden>Open panel</button>
+<div id="secondary"></div>
 <script>
   // A stand-in for YouTube's player: the #movie_player element with the API methods and controls the
   // userscripts use. Desktop/embed controls by default; m.youtube.com controls with ?ui=mobile.
@@ -127,6 +132,41 @@
       if (item) { fake.setCaptions(item.dataset.captions !== 'off'); menu.hidden = true; }
     });
   }
+
+  // Live chat, as on www.youtube.com: a ytd-live-chat-frame beside the player holding a same-origin
+  // iframe, whose header has the Close button once its content has loaded. Closing collapses the
+  // frame; "Open panel" under the video reopens it.
+  let chatFrame = null;
+  const openChatButton = document.getElementById('open-chat');
+  openChatButton.addEventListener('click', () => fake.setChatOpen(true));
+  Object.assign(fake, {
+    chatCloseReady: true, // false: the Close button ignores clicks
+    chatScriptClicks: 0, // clicks on the Close button made by scripts rather than the user
+    showLiveChat({ open = true, loaded = true } = {}) {
+      chatFrame = document.createElement('ytd-live-chat-frame');
+      chatFrame.id = 'chat';
+      chatFrame.innerHTML = '<iframe id="chatframe"></iframe>';
+      document.getElementById('secondary').append(chatFrame);
+      this.setChatOpen(open);
+      if (loaded) this.loadLiveChat();
+    },
+    loadLiveChat() {
+      const doc = chatFrame.querySelector('iframe').contentDocument;
+      doc.body.innerHTML = `<yt-live-chat-header-renderer>
+          <div id="close-button"><yt-button-renderer><yt-button-shape>
+            <button aria-label="Close">Close</button>
+          </yt-button-shape></yt-button-renderer></div>
+        </yt-live-chat-header-renderer>`;
+      doc.querySelector('#close-button button').addEventListener('click', (e) => {
+        if (!e.isTrusted) this.chatScriptClicks++;
+        if (this.chatCloseReady) this.setChatOpen(false);
+      });
+    },
+    setChatOpen(open) {
+      chatFrame.toggleAttribute('collapsed', !open);
+      openChatButton.hidden = open;
+    },
+  });
 </script>
 </body>
 </html>

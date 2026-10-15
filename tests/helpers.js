@@ -31,6 +31,8 @@ const playerState = (page) =>
     quality: fake.quality,
     autoplayOn: fake.autoplayOn,
     autoplayScriptClicks: fake.autoplayScriptClicks,
+    chatOpen: (() => { const c = document.querySelector('ytd-live-chat-frame'); return !!c && !c.hasAttribute('collapsed'); })(),
+    chatScriptClicks: fake.chatScriptClicks,
     calls: fake.calls,
   }));
 

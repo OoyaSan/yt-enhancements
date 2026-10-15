@@ -162,6 +162,35 @@ test.describe('m.youtube.com', () => {
   });
 });
 
+test.describe('www.youtube.com livestreams', () => {
+  // YouTube's live chat tells headless Chromium to "update your browser", so look like regular
+  // desktop Chrome here.
+  const { defaultBrowserType, ...desktopChrome } = devices['Desktop Chrome'];
+  test.use(desktopChrome);
+
+  const chatCloseButton = (page) =>
+    page.frameLocator('ytd-live-chat-frame iframe').locator('yt-live-chat-header-renderer #close-button button');
+  const chatCollapsed = (page) => page.locator('ytd-live-chat-frame').evaluate((c) => c.hasAttribute('collapsed'));
+
+  const cases = [
+    ['a livestream', 'https://www.youtube.com/@LofiGirl/live'], // a 24/7 stream
+    ['chat replay of a past stream', 'https://www.youtube.com/watch?v=5qap5aO4i9A'],
+  ];
+  for (const [what, url] of cases) {
+    test(`no-livestream-chat closes the chat on ${what}`, async ({ page }) => {
+      await openPlayer(page, url);
+      if (url.endsWith('/live')) {
+        test.skip(!(await onPlayer(page, (p) => p.getVideoData().isLive)), "The stream isn't live right now");
+      }
+      await expect(chatCloseButton(page)).toBeAttached({ timeout: 30_000 });
+      expect(await chatCollapsed(page), 'the chat starts open').toBe(false);
+
+      await runUserscript(page, 'no-livestream-chat.user.js');
+      await expect.poll(() => chatCollapsed(page), { timeout: 10_000 }).toBe(true);
+    });
+  }
+});
+
 test.describe('youtube-nocookie.com embed', () => {
   test('player has the API the scripts use', async ({ page }) => {
     await page.goto(`https://www.youtube-nocookie.com/embed/${VIDEO}`);
