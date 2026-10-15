@@ -1,0 +1,22 @@
+# Weekly version updates for the npm dev dependencies (Playwright) and the GitHub Actions used
+# by the workflows. Security updates aren't affected by the cooldown and still arrive right away.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Only propose releases that have been out for a week, so brand-new ones get time to settle.
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # One pull request for all action updates instead of one per action.
+    groups:
+      github-actions:
+        patterns: ["*"]
