@@ -9,9 +9,12 @@ const { test, expect, devices } = require('@playwright/test');
 
 const VIDEO = 'dQw4w9WgXcQ'; // long-lived video with English captions
 const PLAYER_API = [
-  'getVideoData', 'isSubtitlesOn', 'setOption',
-  'getAvailableQualityLevels', 'setPlaybackQualityRange', 'setPlaybackQuality',
+  'getVideoData', 'getPlayerState', 'getCurrentTime', 'isSubtitlesOn', 'setOption',
+  'getAvailableQualityLevels', 'getPreferredQuality', 'setPlaybackQualityRange', 'setPlaybackQuality',
 ];
+// Has a sponsor segment from 0:00 to 1:09.5. Skipping it before the video starts, as SponsorBlock
+// does, gets YouTube's player stuck (as of October 2026; other videos, like VIDEO, don't).
+const STUCK_VIDEO = 'skga_MA02_A';
 const ALL_FUNCTIONS = Object.fromEntries(PLAYER_API.map((name) => [name, 'function']));
 const AUTOPLAY_TOGGLE = 'button.ytp-autonav-toggle';
 const AUTOPLAY_STATE = `${AUTOPLAY_TOGGLE} .ytp-autonav-toggle-button`;
@@ -87,6 +90,24 @@ test.describe('www.youtube.com', () => {
 
     await runUserscript(page, 'best-quality.user.js');
     await expect.poll(() => onPlayer(page, (p) => p.getPlaybackQuality()), { timeout: 30_000 }).toBe(best);
+  });
+
+  test('unstick-start gets a video skipped ahead before it started playing', async ({ page }) => {
+    // Skip to 1:09.5 the moment the video starts loading, as SponsorBlock does.
+    await page.addInitScript(() => {
+      if (/[?&]t=/.test(location.search)) return;
+      const skip = setInterval(() => {
+        const video = document.querySelector('#movie_player video');
+        if (video && video.src) { video.currentTime = 69.5; clearInterval(skip); }
+      }, 10);
+    });
+    await page.addInitScript({ path: path.join(__dirname, '..', '..', 'unstick-start.user.js') });
+    await page.goto(`https://www.youtube.com/watch?v=${STUCK_VIDEO}`);
+    test.skip(new URL(page.url()).hostname.startsWith('consent.'), 'YouTube showed a cookie consent page');
+
+    // Playing from 1:09 or later, whether YouTube got stuck (and the script reloaded it) or not.
+    const playingFrom = () => onPlayer(page, (p) => p.getPlayerState() === 1 && p.getCurrentTime() >= 69).catch(() => false);
+    await expect.poll(playingFrom, { timeout: 45_000 }).toBe(true);
   });
 
   test('never-autoplay turns Autoplay off, and YouTube remembers it', async ({ page }) => {
