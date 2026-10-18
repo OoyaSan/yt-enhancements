@@ -21,7 +21,7 @@
 <body>
 <input id="search" placeholder="Search">
 <div id="movie_player" class="html5-video-player">
-  <div class="video"></div>
+  <div class="video"><video class="video-stream html5-main-video"></video></div>
   <div class="controls"></div>
 </div>
 <button id="open-chat" hidden>Open panel</button>
@@ -43,6 +43,7 @@
        <div class="ytp-settings-menu" hidden>
          <button class="ytp-menuitem" data-captions="off">Captions: Off</button>
          <button class="ytp-menuitem" data-captions="en">Captions: English</button>
+         <button class="ytp-menuitem" data-quality="medium">Quality: 360p</button>
        </div>`;
   const ccButton = controls.querySelector('.ytp-subtitles-button, .ytmClosedCaptioningButtonButton');
   // Desktop's Autoplay toggle is always there (though YouTube may hide it); mobile's is only added once
@@ -51,9 +52,15 @@
 
   const fake = window.fake = {
     videoId: 'video-1',
+    cpn: 'playback-1', // YouTube's ID for this playback; a new one each time a video is (re)loaded
+    playerState: 1, // -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering
     captionsOn: false,
     qualityLevels: ['hd1080', 'hd720', 'large', 'medium', 'small', 'tiny', 'auto'], // highest first
     quality: 'auto',
+    preferredQuality: 'auto', // what getPreferredQuality() reports: the locked quality, or 'auto'
+    qualityLockSticks: true, // false: setPlaybackQualityRange doesn't lock anything
+    currentTime: 0, // where the player is (getCurrentTime()), also the <video> element's currentTime
+    readyState: 4, // the <video> element's: 0 nothing loaded, 1 metadata only, 2+ has a frame to show
     hidden: false,
     autoplayOn: true, // YouTube's default
     autoplayReady: true, // false: the toggle ignores clicks, as YouTube's does right after page load
@@ -85,9 +92,20 @@
     setAd(on) { player.classList.toggle('ad-showing', on); },
     loadVideo(id, { captionsOn = false, qualityLevels } = {}) {
       this.videoId = id;
-      this.quality = 'auto';
+      this.reloadVideo();
       if (qualityLevels) this.qualityLevels = qualityLevels;
       this.setCaptions(captionsOn);
+    },
+    // YouTube loading the same video again (e.g. loadVideoById): a new cpn, and the quality lock is gone.
+    reloadVideo() {
+      this.cpn = 'playback-' + (Number(this.cpn.split('-')[1]) + 1);
+      this.quality = 'auto';
+      this.preferredQuality = 'auto';
+    },
+    // The user picking a quality in the settings menu, as YouTube applies it.
+    lockQuality(q) {
+      this.quality = q;
+      if (this.qualityLockSticks) this.preferredQuality = q;
     },
     removeApi(...names) { for (const name of names) delete player[name]; },
   };
@@ -95,17 +113,26 @@
   // Lets tests simulate a background tab.
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => fake.hidden });
 
+  const video = player.querySelector('video');
+  Object.defineProperties(video, {
+    readyState: { get: () => fake.readyState },
+    currentTime: { get: () => fake.currentTime, set: (t) => { fake.currentTime = t; } },
+  });
+
   const record = (fn, args) => fake.calls.push({ fn, args: JSON.parse(JSON.stringify(args)) });
   Object.assign(player, {
-    getVideoData: () => ({ video_id: fake.videoId }),
+    getVideoData: () => ({ video_id: fake.videoId, cpn: fake.cpn }),
+    getPlayerState: () => fake.playerState,
+    getCurrentTime: () => fake.currentTime,
     isSubtitlesOn: () => fake.captionsOn,
     setOption(module, option, value) {
       record('setOption', [module, option, value]);
       if (module === 'captions' && option === 'track') fake.setCaptions(!!(value && value.languageCode));
     },
     getAvailableQualityLevels: () => fake.qualityLevels.slice(),
-    setPlaybackQualityRange(min, max) { record('setPlaybackQualityRange', [min, max]); fake.quality = max; },
-    setPlaybackQuality(q) { record('setPlaybackQuality', [q]); fake.quality = q; },
+    getPreferredQuality: () => fake.preferredQuality,
+    setPlaybackQualityRange(min, max) { record('setPlaybackQualityRange', [min, max]); fake.lockQuality(max); },
+    setPlaybackQuality(q) { record('setPlaybackQuality', [q]); fake.lockQuality(q); },
   });
 
   // YouTube's own controls: the CC button and "c" shortcut toggle captions; settings has a captions menu.
@@ -128,8 +155,11 @@
   if (menu) {
     controls.querySelector('.ytp-settings-button').addEventListener('click', () => { menu.hidden = !menu.hidden; });
     menu.addEventListener('click', (e) => {
-      const item = e.target.closest('[data-captions]');
-      if (item) { fake.setCaptions(item.dataset.captions !== 'off'); menu.hidden = true; }
+      const item = e.target.closest('[data-captions], [data-quality]');
+      if (!item) return;
+      if (item.dataset.quality) fake.lockQuality(item.dataset.quality);
+      else fake.setCaptions(item.dataset.captions !== 'off');
+      menu.hidden = true;
     });
   }
 

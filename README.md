@@ -5,7 +5,7 @@ Small userscripts that improve YouTube. Each script is a single self-contained
 
 The scripts run on `www.youtube.com` and `m.youtube.com`, except no-livestream-chat, which
 only runs on `www.youtube.com` because the mobile site doesn't show livestream chat.
-best-quality and captions-off also run in embedded players (including
+best-quality, captions-off and unstick-start also run in embedded players (including
 `youtube-nocookie.com` embeds).
 
 ## Scripts
@@ -16,12 +16,20 @@ best-quality and captions-off also run in embedded players (including
 | [captions-off.user.js](captions-off.user.js) | Starts every video with captions off, without overriding you if you turn them on. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/captions-off.user.js) |
 | [never-autoplay.user.js](never-autoplay.user.js) | Keeps Autoplay (playing the next video when one ends) turned off. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/never-autoplay.user.js) |
 | [no-livestream-chat.user.js](no-livestream-chat.user.js) | Closes the chat on livestreams, and chat replay on past streams. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/no-livestream-chat.user.js) |
+| [unstick-start.user.js](unstick-start.user.js) | Reloads a video that gets stuck loading because something (like SponsorBlock) skipped ahead before it started. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/unstick-start.user.js) |
 
 ### best-quality
 
-Once per video, after any pre-roll ad, locks playback to the top entry of the
-player's available quality levels (e.g. 2160p if offered, otherwise 1080p, and so on).
-After that it leaves quality alone, so you can still change it manually.
+Once each video has started playing, after any pre-roll ad, locks playback to the top entry
+of the player's available quality levels (e.g. 2160p if offered, otherwise 1080p, and so on).
+It waits for playback because switching quality before the first frame can hold up the start
+by several seconds, so a video that's paused before it starts keeps YouTube's choice until you
+press play.
+
+If YouTube then reloads the video, which drops the setting (it does this, for example, to retry
+a stalled start), the script sets it again, at most three times per video. As soon as you open
+the player's settings during a video, it leaves that video's quality alone, so your own choice
+sticks.
 
 ### captions-off
 
@@ -53,6 +61,23 @@ on every page load. This script clicks the chat's own Close button as soon as th
 loaded, trying again every second if YouTube ignores the click. Once the chat has been
 closed for a video, whether by the script or by you, the script leaves it alone, so you
 can reopen it with **Open panel** under the video and it stays open until the next video.
+
+### unstick-start
+
+If a video jumps far ahead before it has started playing, YouTube's player can get stuck: it
+only loads the first few seconds of the video, so the video never appears, and after about 20
+seconds YouTube shows "Something went wrong". SponsorBlock makes exactly that jump when a video
+has a sponsor segment right at 0:00. It happens most with the first video in a fresh window
+(such as a new incognito window), where SponsorBlock is ready before the video is. It doesn't
+happen with every video.
+
+When a video has been stuck like this for 4 seconds, the script reloads the page at the time
+it was jumping to (adding `t=` to the address, or `start=` in embeds), which YouTube handles
+fine. In testing, a video stuck like this then started about 11 to 16 seconds after the page
+was opened, instead of not at all. The script does nothing once the video has played, doesn't
+count time while an ad is showing or the tab is in the background, and reloads the same video
+at most once a minute. On a very slow connection, a video opened at a timestamp may get one
+unneeded reload.
 
 ## Installing
 
