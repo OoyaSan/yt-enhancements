@@ -4,7 +4,8 @@ Small userscripts that improve YouTube. Each script is a single self-contained
 `.user.js` file with no dependencies.
 
 The scripts run on `www.youtube.com` and `m.youtube.com`, except no-livestream-chat, which
-only runs on `www.youtube.com` because the mobile site doesn't show livestream chat.
+only runs on `www.youtube.com` because the mobile site doesn't show livestream chat, and
+quick-history-delete, which only works on the `www.youtube.com` watch history.
 best-quality, captions-off and unstick-start also run in embedded players (including
 `youtube-nocookie.com` embeds).
 
@@ -16,6 +17,7 @@ best-quality, captions-off and unstick-start also run in embedded players (inclu
 | [captions-off.user.js](captions-off.user.js) | Starts every video with captions off, without overriding you if you turn them on. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/captions-off.user.js) |
 | [never-autoplay.user.js](never-autoplay.user.js) | Keeps Autoplay (playing the next video when one ends) turned off. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/never-autoplay.user.js) |
 | [no-livestream-chat.user.js](no-livestream-chat.user.js) | Closes the chat on livestreams, and chat replay on past streams. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/no-livestream-chat.user.js) |
+| [quick-history-delete.user.js](quick-history-delete.user.js) | Adds buttons to your watch history that remove a video, or every video from its channel, in one click. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/quick-history-delete.user.js) |
 | [unstick-start.user.js](unstick-start.user.js) | Reloads a video that gets stuck loading because something (like SponsorBlock) skipped ahead before it started. | [Install](https://github.com/OoyaSan/yt-enhancements/raw/main/unstick-start.user.js) |
 
 ### best-quality
@@ -62,6 +64,27 @@ loaded, trying again every second if YouTube ignores the click. Once the chat ha
 closed for a video, whether by the script or by you, the script leaves it alone, so you
 can reopen it with **Open panel** under the video and it stays open until the next video.
 
+### quick-history-delete
+
+On your [watch history](https://www.youtube.com/feed/history), each video gets two buttons
+below its ⋮ menu button:
+
+- **Remove from watch history** (trash can) removes the video right away, the same as
+  choosing **Remove from watch history** in its ⋮ menu. Like that menu entry, it removes
+  every view of the video, not just that day's.
+- **Remove all videos from** *channel* (trash can with lines) asks you to confirm, then
+  removes every video from that channel, including collaborations it's part of. So it doesn't
+  have to load your whole history, it searches your watch history for the channel's name (as
+  the **Search watch history** box does), goes through the results, loading more as it
+  reaches the end, and removes each one from that channel. Videos from other channels that
+  only mention the name stay. A message in the bottom-right corner shows how many it has
+  removed so far and has a **Stop** button. When it's done you're left on the search
+  results, which you can clear with the search box's ✕.
+
+The script removes each video through its own ⋮ menu (kept out of sight while it does), so
+YouTube handles it exactly like a removal you make yourself, in your language. Only regular
+videos get the buttons; Shorts in your history aren't covered.
+
 ### unstick-start
 
 If a video jumps far ahead before it has started playing, YouTube's player can get stuck: it
@@ -105,7 +128,8 @@ npm test
 ```
 
 `npm test` runs the scripts against a fake YouTube player
-([tests/fixtures/player.html](tests/fixtures/player.html)) in headless Chromium. A fake
+([tests/fixtures/player.html](tests/fixtures/player.html)) and a fake watch history page
+([tests/fixtures/history.html](tests/fixtures/history.html)) in headless Chromium. A fake
 clock makes the polling, retries and the 8-second captions window run instantly, and
 clicks, taps and key presses are real browser input, so the "user changed it themselves"
 cases are tested for real. It covers desktop and m.youtube.com (emulated phone) and needs
@@ -119,7 +143,9 @@ scripts use, and that the scripts still work there. The fake player only reflect
 as of when it was written, so run this now and then, and whenever a script seems broken.
 It needs network access, can be flaky (ads, bot checks), and skips itself if YouTube shows
 a cookie consent page. The autoplay checks also skip themselves when YouTube serves a
-player without a working Autoplay toggle, which happens often in fresh sessions.
+player without a working Autoplay toggle, which happens often in fresh sessions. It doesn't
+cover quick-history-delete, since the watch history needs a signed-in account; check that
+one by hand.
 
-If YouTube changes its player, update the fake player to match so the fixture tests keep
-describing reality.
+If YouTube changes its player or watch history page, update the fake to match so the
+fixture tests keep describing reality.
