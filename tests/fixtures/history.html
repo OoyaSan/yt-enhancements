@@ -1,0 +1,251 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fake YouTube watch history</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  ytd-browse { display: block; width: 640px; padding: 0 16px; }
+  ytd-browse[hidden], yt-lockup-view-model[hidden] { display: none; }
+  ytd-item-section-renderer, yt-lockup-view-model, ytd-continuation-item-renderer { display: block; }
+  .ytLockupViewModelHost { display: flex; height: 138px; margin: 8px 0; }
+  .thumbnail { flex: none; width: 246px; background: #ccc; }
+  .ytLockupViewModelMetadata { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; }
+  yt-lockup-metadata-view-model { display: flex; position: relative; min-width: 0; padding-left: 16px; }
+  .ytLockupMetadataViewModelTextContainer { min-width: 0; padding-right: 24px; }
+  .ytLockupMetadataViewModelMenuButton { position: absolute; top: -6px; right: -10px; }
+  .ytLockupMetadataViewModelMenuButton button { width: 40px; height: 40px; }
+  .ytDismissibleItemReplacedContent { height: 60px; }
+  ytd-continuation-item-renderer { height: 40px; }
+  tp-yt-iron-dropdown { position: fixed; top: 100px; left: 400px; display: none; background: #eee; }
+  tp-yt-iron-dropdown[opened] { display: block; }
+</style>
+</head>
+<body>
+<ytd-app>
+  <ytd-browse page-subtype="history"><div id="contents"></div></ytd-browse>
+</ytd-app>
+<ytd-popup-container>
+  <tp-yt-iron-dropdown><yt-sheet-view-model><yt-list-view-model role="menu"></yt-list-view-model></yt-sheet-view-model></tp-yt-iron-dropdown>
+</ytd-popup-container>
+<script>
+  // A stand-in for YouTube's watch history page (www.youtube.com/feed/history) as of October 2026:
+  // days of yt-lockup-view-model items, each rendered from a lockupViewModel that holds the video's
+  // channel(s) and its ⋮ menu, whose "Remove from watch history" entry removes all views of the video.
+  // The menu is one shared dropdown, filled in for whichever item's ⋮ was clicked. "Search watch
+  // history" is a yt-navigate to the history with a query, and the history loads in parts as you
+  // scroll to the end. Tests drive it through window.fake.
+  const page = document.querySelector('ytd-browse');
+  const contents = document.getElementById('contents');
+  const dropdown = document.querySelector('tp-yt-iron-dropdown');
+  const menuList = dropdown.querySelector('yt-list-view-model');
+
+  const fake = window.fake = {
+    history: [], // entries, newest first: { day, video: { id, title, channels: [[channelId, name], ...] } }
+    query: '', // what the history is searched for
+    pageSize: 20, // entries per part of the history
+    removeDelay: 300, // ms until a removal shows on the page (YouTube's request)
+    removeWorks: true, // false: removals fail, and the page doesn't change
+    loadDelay: 500, // ms to load the next part of the history
+    navigateDelay: 400, // ms for a search to load
+    removed: [], // IDs of videos removed from history
+    removeRequests: 0,
+    navigations: [], // queries searched for, in order
+    watched: [], // IDs of videos opened by clicking an item
+    menuOpens: 0,
+    load(entries, { pageSize } = {}) {
+      this.history = entries.map(({ day, ...video }) => ({ day, video }));
+      if (pageSize) this.pageSize = pageSize;
+      render();
+    },
+    // YouTube reusing the nth item's element for another video.
+    reuse(n, { day, ...video }) {
+      const item = contents.querySelectorAll('yt-lockup-view-model')[n];
+      fill(item, { day, video });
+    },
+    menuOpen: () => dropdown.opened,
+    // IDs of the videos on the page (not counting removal notices).
+    shown: () => [...contents.querySelectorAll('yt-lockup-view-model')]
+      .filter(i => i.checkVisibility() && i.querySelector('.ytLockupViewModelHost')).map(i => videoOf(i).id),
+  };
+
+  const browse = (id) => ({ innertubeCommand: { browseEndpoint: { browseId: id } } });
+  const lockupData = (video) => ({
+    contentId: video.id,
+    contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+    metadata: {
+      lockupMetadataViewModel: {
+        title: { content: video.title },
+        // A collaboration has stacked avatars that open a list of its channels.
+        image: video.channels.length > 1
+          ? { avatarStackViewModel: { rendererContext: { commandContext: { onTap: { innertubeCommand: { showDialogCommand: {
+              panelLoadingStrategy: { inlineContent: { dialogViewModel: { customContent: { listViewModel: {
+                listItems: video.channels.map(([id, name]) => ({ listItemViewModel: {
+                  title: { content: name }, rendererContext: { commandContext: { onTap: browse(id) } },
+                } })),
+              } } } } },
+            } } } } } } }
+          : { decoratedAvatarViewModel: {
+              a11yLabel: `Go to channel ${video.channels[0][1]}`,
+              rendererContext: { commandContext: { onTap: browse(video.channels[0][0]) } },
+            } },
+        metadata: { contentMetadataViewModel: { metadataRows: [{ metadataParts: [
+          { text: { content: video.channels[0][1] } }, { text: { content: '1.2M' } },
+        ] }] } },
+        menuButton: { buttonViewModel: { iconName: 'MORE_VERT', onTap: { innertubeCommand: { showSheetCommand: {
+          panelLoadingStrategy: { inlineContent: { sheetViewModel: { content: { listViewModel: { listItems: [
+            { listItemViewModel: { title: { content: 'Save to Watch later' }, rendererContext: { commandContext: { onTap: {
+              innertubeCommand: { playlistEditEndpoint: { playlistId: 'WL' } },
+            } } } } },
+            { downloadListItemViewModel: { rendererContext: { commandContext: { onTap: {
+              innertubeCommand: { offlineVideoEndpoint: { videoId: video.id } },
+            } } } } },
+            { listItemViewModel: { title: { content: 'Remove from watch history' }, rendererContext: { commandContext: { onTap: {
+              innertubeCommand: { feedbackEndpoint: {
+                feedbackToken: `token-${video.id}`,
+                uiActions: { hideEnclosingContainer: true },
+                actions: [
+                  { replaceEnclosingAction: { item: { notificationMultiActionRenderer: {} } } },
+                  { hideItemSectionVideosByIdCommand: { videoId: video.id } },
+                  { localWatchHistoryCommand: { localWatchHistoryCommandType: 'LOCAL_WATCH_HISTORY_COMMAND_TYPE_REMOVE', videoId: video.id } },
+                ],
+                contentId: video.id,
+              } },
+            } } } } },
+          ] } } } } },
+        } } } } },
+      },
+    },
+  });
+  const menuEntries = (item) =>
+    item.componentProps.data().metadata.lockupMetadataViewModel.menuButton.buttonViewModel.onTap.innertubeCommand
+      .showSheetCommand.panelLoadingStrategy.inlineContent.sheetViewModel.content.listViewModel.listItems;
+  const videoOf = (item) => item.video;
+
+  // Items, like YouTube's, expose what they were rendered from as a signal: componentProps.data().
+  function fill(item, entry) {
+    const data = lockupData(entry.video);
+    item.video = entry.video;
+    item.componentProps = { data: () => data };
+    item.querySelector('h3').textContent = entry.video.title;
+    item.querySelector('.byline').textContent = entry.video.channels.map(c => c[1]).join(' and ');
+  }
+  function lockup(entry) {
+    const item = document.createElement('yt-lockup-view-model');
+    item.innerHTML = `<div class="ytLockupViewModelHost">
+        <a class="thumbnail" href="#"></a>
+        <div class="ytLockupViewModelMetadata"><yt-lockup-metadata-view-model>
+          <div class="ytLockupMetadataViewModelTextContainer"><h3></h3><div class="byline"></div></div>
+          <div class="ytLockupMetadataViewModelMenuButton"><button aria-label="More actions">⋮</button></div>
+        </yt-lockup-metadata-view-model></div>
+      </div>`;
+    fill(item, entry);
+    // Clicking an item opens its video.
+    item.addEventListener('click', (e) => { e.preventDefault(); fake.watched.push(videoOf(item).id); });
+    item.querySelector('.ytLockupMetadataViewModelMenuButton button').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMenu(item);
+    });
+    return item;
+  }
+
+  // The history, or the entries that mention the search query, in parts.
+  const matches = (entry) => {
+    const q = fake.query.toLowerCase();
+    return !q || [entry.video.title, ...entry.video.channels.map(c => c[1])].some(t => t.toLowerCase().includes(q));
+  };
+  let rendered = new Set();
+  function render() {
+    contents.textContent = '';
+    rendered = new Set();
+    renderMore();
+  }
+  function renderMore() {
+    const waiting = fake.history.filter(e => !e.removed && matches(e) && !rendered.has(e));
+    const part = waiting.slice(0, fake.pageSize);
+    contents.querySelector('ytd-continuation-item-renderer')?.remove();
+    for (const entry of part) {
+      rendered.add(entry);
+      let section = contents.lastElementChild;
+      if (!section || section.dataset.day !== entry.day) {
+        section = document.createElement('ytd-item-section-renderer');
+        section.dataset.day = entry.day;
+        section.innerHTML = '<div class="header"></div><div class="items"></div>';
+        section.firstChild.textContent = entry.day;
+        contents.append(section);
+      }
+      section.lastChild.append(lockup(entry));
+    }
+    if (waiting.length > part.length) contents.append(document.createElement('ytd-continuation-item-renderer'));
+  }
+  // The next part loads once the end of the list is on screen.
+  setInterval(() => {
+    const more = contents.querySelector('ytd-continuation-item-renderer');
+    if (!more || more.loading || more.getBoundingClientRect().top > innerHeight) return;
+    more.loading = true;
+    setTimeout(renderMore, fake.loadDelay);
+  }, 100);
+
+  // Searching the history, as "Search watch history" does.
+  document.addEventListener('yt-navigate', (e) => {
+    const query = e.detail.endpoint.browseEndpoint.query || '';
+    fake.navigations.push(query);
+    setTimeout(() => {
+      fake.query = query;
+      history.pushState(null, '', query ? `/feed/history?query=${encodeURIComponent(query)}` : '/feed/history');
+      render();
+      document.dispatchEvent(new CustomEvent('yt-navigate-finish'));
+    }, fake.navigateDelay);
+  });
+
+  // The ⋮ menu: one dropdown, which opens a moment after the click, showing the item's entries in
+  // elements it reuses.
+  let menuItem = null;
+  dropdown.opened = false;
+  dropdown.close = () => { dropdown.opened = false; dropdown.removeAttribute('opened'); };
+  function openMenu(item) {
+    fake.menuOpens++;
+    setTimeout(() => {
+      menuItem = item;
+      const entries = menuEntries(item);
+      while (menuList.children.length < entries.length) {
+        const entry = document.createElement('yt-list-item-view-model');
+        entry.innerHTML = '<div><button role="menuitem"><span></span></button></div>';
+        menuList.append(entry);
+      }
+      entries.forEach((e, i) => {
+        menuList.children[i].querySelector('span').textContent = e.listItemViewModel ? e.listItemViewModel.title.content : 'Download';
+      });
+      dropdown.opened = true;
+      dropdown.setAttribute('opened', '');
+    }, 0);
+  }
+  menuList.addEventListener('click', (e) => {
+    const entry = e.target.closest('yt-list-item-view-model');
+    if (!entry || !dropdown.opened) return;
+    const chosen = menuEntries(menuItem)[[...menuList.children].indexOf(entry)];
+    const command = Object.values(chosen)[0].rendererContext.commandContext.onTap.innertubeCommand;
+    dropdown.close();
+    if (command.feedbackEndpoint) removeVideo(menuItem, command.feedbackEndpoint.contentId);
+  });
+
+  // What YouTube does once it has removed a video: each of the video's entries has its content replaced
+  // by a notice saying so (the elements, and what they were rendered from, stay the same).
+  function removeVideo(item, id) {
+    fake.removeRequests++;
+    setTimeout(() => {
+      if (!fake.removeWorks) return;
+      fake.removed.push(id);
+      for (const entry of fake.history) if (entry.video.id === id) entry.removed = true;
+      for (const other of contents.querySelectorAll('yt-lockup-view-model')) {
+        if (videoOf(other).id !== id) continue;
+        other.innerHTML = `<div class="ytDismissibleItemReplacedContent"><div><notification-multi-action-renderer>
+            All views of this video removed from history
+          </notification-multi-action-renderer></div></div>`;
+      }
+    }, fake.removeDelay);
+  }
+</script>
+</body>
+</html>
